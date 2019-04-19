@@ -19,7 +19,8 @@ def DTW(src, trgt):
 
     for i in range(1, src.shape[1]):
         for j in range(1, trgt.shape[1]):
-            c = np.linalg.norm(src[i], trgt[j]) # Euclidean distance
+            #c = np.linalg.norm(src[i], trgt[j]) # Euclidean distance
+            c = np.abs(src[i] - trgt[j])
             dtw[i][j] = c + np.min([dtw[i - 1][j],
                                     dtw[i][j - 1],
                                     dtw[i - 1][j - 1]])
@@ -46,7 +47,7 @@ def populate_knn_table():
 def main():
     knn_table = populate_knn_table()
 
-    
+
 
 if __name__ == "__main__":
     main()
