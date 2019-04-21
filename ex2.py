@@ -1,7 +1,10 @@
 import librosa
 import numpy as np 
 import os
+from scipy.spatial.distance import euclidean
 
+test_size = 250
+train_size = 25
 TEST_PATH = "./test_files/"
 TRIAN_PATH = "./train_data/"
 labels = [("one", 1), ("two", 2), ("three", 3), ("four", 4), ("five", 5)]
@@ -9,24 +12,36 @@ sample_shape = 20 * 32
 
 # dynamic programming implementation 
 def DTW(src, trgt):
-    dtw = np.zeros((src.shape[1], trgt.shape[1]))
+    dtw = np.zeros((src.shape[1]+1, trgt.shape[1]+1))
 
-    for i in range(src.shape[1]):
-        for j in range(trgt.shape[1]):
+    for i in range(1,src.shape[1]+1):
+        for j in range(1,trgt.shape[1]+1):
             dtw[i][j] = np.inf
     
-    dtw[i][j] = 0
+    dtw[0,0] = 0
 
-    for i in range(1, src.shape[1]):
-        for j in range(1, trgt.shape[1]):
-            #c = np.linalg.norm(src[i], trgt[j]) # Euclidean distance
-            c = np.abs(src[i] - trgt[j])
+    for i in range(1, src.shape[1]+1):
+        for j in range(1, trgt.shape[1]+1):
+            c = euclidean(src[:,i-1], trgt[:,j-1]) # Euclidean distance
+            #c = np.abs(src[i] - trgt[j])
             dtw[i][j] = c + np.min([dtw[i - 1][j],
                                     dtw[i][j - 1],
                                     dtw[i - 1][j - 1]])
     
     # get the dtw distance
-    return dtw[src.shape[1], trgt.shape[1]]
+    return dtw[-1, -1]
+
+
+def matrix_euclidean_dist(src, trgt):
+    '''
+    :param src: mfcc feature matrix
+    :param trgt: mfcc feature matrix
+    :return: euclidean distance between two matrices, flatten
+    '''
+    sum = 0
+    for i in range(src.shape[1]):
+        sum+=euclidean(src[:,i], trgt[:,i])
+    return sum/src.shape[1]
 
 # init knn table
 def populate_knn_table():
@@ -37,17 +52,62 @@ def populate_knn_table():
         for f in os.listdir(path):
             # only wav files
             if (f.endswith(".wav")):
-                y, sr = librosa.load(path + "/" + f, sr=None)
-                mfcc = librosa.feature.mfcc(y=y, sr=sr)
+                mfcc = load_file_feat(path + "/" + f)
                 # reshape mfcc matrix to 620 feature vector
-                knn_table.append([mfcc.reshape((sample_shape)), label[1]])
+                #knn_table.append([mfcc.reshape((sample_shape)), label[1]])
+                knn_table.append((mfcc, label[1]))
         
     return knn_table
 
+
+def load_file_feat(path):
+    '''
+    :param path: files path
+    :return: file's features
+    '''
+    y, sr = librosa.load(path, sr=None)
+    return librosa.feature.mfcc(y=y, sr=sr)
+
+
+def do_knn(knn_table):
+    test_set_classification = []
+    same = 0
+    test_files = [f for f in os.listdir(TEST_PATH) if ".wav" in f]
+
+    for file in test_files:
+        # Init result params
+        dtw_dist = np.inf
+        dtw_label = None
+        euc_dist = np.inf
+        euc_label = None
+        test_ex_mfcc = load_file_feat(TEST_PATH+file)
+
+        # Choose label with min. distance
+        for ex_mfcc, ex_label in knn_table:
+            curr_dtw_dist = DTW(ex_mfcc,test_ex_mfcc)
+            curr_euc_dist = matrix_euclidean_dist(ex_mfcc, test_ex_mfcc)
+            if curr_dtw_dist < dtw_dist:
+                dtw_dist = curr_dtw_dist
+                dtw_label = ex_label
+            if curr_euc_dist < euc_dist:
+                euc_dist = curr_euc_dist
+                euc_label = ex_label
+        test_set_classification.append((file, euc_label, dtw_label))
+        if euc_label == dtw_label:
+            same += 1
+    print(f"Same is {same}/{len(test_set_classification)} - {same / len(test_set_classification)}")
+
+    return test_set_classification
+
+def save_res(test_set_classification):
+    output = open("output.txt", "w")
+    for file_name, euc_label, dtw_label in test_set_classification:
+        output.write(f"{file_name} - {euc_label} - {dtw_label}\n")
+
 def main():
     knn_table = populate_knn_table()
-
-
+    test_res = do_knn(knn_table)
+    save_res(test_res)
 
 if __name__ == "__main__":
     main()
