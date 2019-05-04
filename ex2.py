@@ -1,23 +1,18 @@
 import librosa
-import numpy as np 
+import numpy as np
 import os
 from scipy.spatial.distance import euclidean
+from dtw import dtw
+from scipy import stats
 
-test_size = 250
-train_size = 25
 TEST_PATH = "./test_files/"
 TRIAN_PATH = "./train_data/"
 labels = [("one", 1), ("two", 2), ("three", 3), ("four", 4), ("five", 5)]
-sample_shape = 20 * 32
 
-# dynamic programming implementation 
+
+# dynamic programming implementation
 def DTW(src, trgt):
-    dtw = np.zeros((src.shape[1]+1, trgt.shape[1]+1))
-
-    for i in range(1,src.shape[1]+1):
-        for j in range(1,trgt.shape[1]+1):
-            dtw[i][j] = np.inf
-    
+    dtw = np.full((src.shape[1]+1, trgt.shape[1]+1), np.inf, dtype=np.float)
     dtw[0,0] = 0
 
     for i in range(1, src.shape[1]+1):
@@ -27,7 +22,7 @@ def DTW(src, trgt):
             dtw[i][j] = c + np.min([dtw[i - 1][j],
                                     dtw[i][j - 1],
                                     dtw[i - 1][j - 1]])
-    
+
     # get the dtw distance
     return dtw[-1, -1]
 
@@ -53,10 +48,8 @@ def populate_knn_table():
             # only wav files
             if (f.endswith(".wav")):
                 mfcc = load_file_feat(path + "/" + f)
-                # reshape mfcc matrix to 620 feature vector
-                #knn_table.append([mfcc.reshape((sample_shape)), label[1]])
                 knn_table.append((mfcc, label[1]))
-        
+
     return knn_table
 
 
@@ -66,7 +59,8 @@ def load_file_feat(path):
     :return: file's features
     '''
     y, sr = librosa.load(path, sr=None)
-    return librosa.feature.mfcc(y=y, sr=sr)
+    mfcc = librosa.feature.mfcc(y=y, sr=sr)
+    return stats.zscore(mfcc,axis=1)
 
 
 def do_knn(knn_table):
@@ -95,14 +89,16 @@ def do_knn(knn_table):
         test_set_classification.append((file, euc_label, dtw_label))
         if euc_label == dtw_label:
             same += 1
-    print(f"Same is {same}/{len(test_set_classification)} - {same / len(test_set_classification)}")
+    print(f"Same is {same}/{len(test_set_classification)} - {same*100. / len(test_set_classification)}")
 
     return test_set_classification
 
 def save_res(test_set_classification):
     output = open("output.txt", "w")
-    for file_name, euc_label, dtw_label in test_set_classification:
-        output.write(f"{file_name} - {euc_label} - {dtw_label}\n")
+    for i, (file_name, euc_label, dtw_label) in enumerate(test_set_classification):
+        output.write(f"{file_name} - {euc_label} - {dtw_label}")
+        if i != len(test_set_classification) -1:
+            output.write("\n")
 
 def main():
     knn_table = populate_knn_table()
@@ -111,5 +107,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
